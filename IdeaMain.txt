@@ -1,4 +1,24 @@
+Nombre: Nine!
+
 Crear el juego de cartas Uno.
 
 108 Cartas Originales + n Nuevas.
+
+Ideas cartas: Un -4, podes tirar 4 cartas en el turno actual.
+              Una carta que te permita ver la siguiente carta del mazo.
+              Comodines, se pueden tirar en cualquier momento.
+              Una que te cambie tus cartas por las del rival, que vos elijas.
+
+
+Jugadores por partidas: 2-5
+
+Cantidad de cartas al comienzo: 9
+
+Habilidades: Al comienzo de cada partida, el usuario selecciona 1 mejora de 3 posibles. la mejora que seleccione la puede usar un máxiimo de 2 veces por partida.
+
+            Descarte doble: tiras 2 cartas por turno
+            Proteccion: Te protege ante cartas que te sumen cartas.
+            Dupeo: Te duplica la carta que vos elijas de tu mazo.
+            Espejo: Devuelve el efecto de una carta de ataque al que te la tiró, vos no sumas, el que te la tiró si.
+            Intercambio: Robas una carta aleatoria del mazo de tu rival y le das una que vos elijas
 
