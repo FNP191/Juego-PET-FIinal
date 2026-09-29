@@ -1,0 +1,13 @@
+Se logro crear un juego que funcione en la terminal.
+
+Errores:
+No funcionan las habilidades, aparecen pero no se pueden usar.
+Saltea turno cuando agarras carta del mazo.
+No se sabe la carta que agarras del mazo hasta el próximo turno.
+Al seleccionar un numero invalido en el comodin de elegir un color, selecciona por defecto Rojo, en vez de saltar error.
+Al poner una letra en vez de un numero cuando tenes que seleccionar una carta crashea, debería saltar un error.
+
+Cosas para agregar:
+Interfaz grafica.
+Multijugador.
+Conexión a base de datos.
