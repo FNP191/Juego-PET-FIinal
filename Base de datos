@@ -1,9 +1,15 @@
 Cartas
   Numero
   Color 
+  Tipo
   
 Habilidades
-  Jugadores
-  Estadisticas
+
+Jugadores
+  ID
+  Username
+
+Estadisticas
   Partidas ganadas
-  horas jugadas
+  Horas jugadas
+  ID (jugador)
