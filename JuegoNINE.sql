@@ -25,10 +25,10 @@ DROP TABLE IF EXISTS `CartasNine`;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `CartasNine` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `nombre` varchar(20) NOT NULL,
-  `habilidad` varchar(67) NOT NULL,
+  `nombre` varchar(50) NOT NULL,
+  `habilidad` varchar(80) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -47,15 +47,16 @@ UNLOCK TABLES;
 DROP TABLE IF EXISTS `Estadisticas`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `Estadisticas` (
+CREATE TABLE Estadisticas (
   `id_estadistica` int(11) NOT NULL AUTO_INCREMENT,
-  `id_jugador` int(11) DEFAULT NULL,
+  `id_jugador` int(11) NOT NULL,
   `partidas_ganadas` int(11) DEFAULT 0,
-  `horas_jugadas` float DEFAULT 0,
+  `partidas_jugadas` int(11) DEFAULT 0,
+  `partidas_perdidas` int(11) DEFAULT 0,
   PRIMARY KEY (`id_estadistica`),
-  KEY `fk_jugador` (`id_jugador`),
+  UNIQUE KEY `uq_jugador` (`id_jugador`),
   CONSTRAINT `fk_jugador` FOREIGN KEY (`id_jugador`) REFERENCES `Jugadores` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -77,8 +78,11 @@ DROP TABLE IF EXISTS `Jugadores`;
 CREATE TABLE `Jugadores` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` varchar(30) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+  `password_hash` varchar(255) NOT NULL,
+  `fecha_creacion` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
