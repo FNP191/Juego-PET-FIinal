@@ -9,7 +9,6 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import JuegoPetNine.modelo.TipoHabilidad;
 
 /**
  * Conexion del jugador con el servidor.
@@ -34,7 +33,7 @@ public class ClienteNine {
     }
 
     /** Se conecta (puede tardar hasta 5 s) y se presenta al servidor. */
-    public void conectar(String host, int puerto, String nombre, TipoHabilidad habilidad) throws IOException {
+    public void conectar(String host, int puerto, String nombre) throws IOException {
         Socket s = new Socket();
         s.connect(new InetSocketAddress(host, puerto), 5000);
         s.setTcpNoDelay(true);
@@ -43,7 +42,7 @@ public class ClienteNine {
         BufferedReader entrada = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
         activo = true;
 
-        enviar(Protocolo.armar(Protocolo.HOLA, nombre, habilidad.name()));
+        enviar(Protocolo.armar(Protocolo.HOLA, nombre));
 
         Thread lector = new Thread(() -> leer(entrada), "Nine-Cliente-Lector");
         lector.setDaemon(true);

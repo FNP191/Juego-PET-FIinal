@@ -1,5 +1,6 @@
 package JuegoPetNine.red;
 
+import JuegoPetNine.BD.GestorBD;
 import JuegoPetNine.logica.JuegoNineControlador;
 import JuegoPetNine.modelo.TipoCarta;
 import JuegoPetNine.modelo.Jugador;
@@ -17,6 +18,10 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import JuegoPetNine.modelo.TipoHabilidad;
 
 /**
@@ -45,9 +50,24 @@ public class ServidorNine {
     private boolean partidaIniciada = false;
     private boolean partidaTerminada = false;
 
+    // Temporizador de turno: si el jugador no actua en 'segundosTurno', se le pasa el turno
+    private final ScheduledExecutorService reloj = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "Nine-Reloj");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> tareaTurno;
+    private int contadorTurno = 0;      // cada vez que se reinicia el reloj sube: una tarea vieja se ignora
+    private int segundosTurno = JuegoNineControlador.SEGUNDOS_POR_TURNO;
+
     public ServidorNine(int puerto, int numJugadores) {
         this.puerto = puerto;
         this.numJugadores = numJugadores;
+    }
+
+    /** Cambia el tiempo por turno (se usa en las pruebas). */
+    public void setSegundosTurno(int segundos) {
+        this.segundosTurno = segundos;
     }
 
     // ------------------------------------------------------------------ arranque
@@ -64,6 +84,7 @@ public class ServidorNine {
 
     public void detener() {
         activo = false;
+        reloj.shutdownNow();
         try {
             if (serverSocket != null) {
                 serverSocket.close();
@@ -117,16 +138,42 @@ public class ServidorNine {
 
     // ------------------------------------------------------------------ registro de jugadores
 
-    private void registrar(ManejadorCliente m, String nombre, String habilidadTxt) {
+    private void registrar(ManejadorCliente m, String nombre) {
         if (m.getNombre() != null || partidaIniciada) {
             return;
         }
         m.setNombre(nombreUnico(Protocolo.limpiar(nombre)));
-        m.setHabilidad(parseHabilidad(habilidadTxt));
+        // A cada jugador se le sortean 2 habilidades distintas y elige una
+        TipoHabilidad[] opciones = TipoHabilidad.sortearDos(azar);
+        m.setOpciones(opciones);
         m.enviar(Protocolo.armar(Protocolo.BIENVENIDA, m.getNombre()));
-        log(m.getNombre() + " se conecto (" + contarRegistrados() + "/" + numJugadores + ")");
+        m.enviar(Protocolo.armar(Protocolo.OPCIONES, opciones[0].name(), opciones[1].name()));
+        log(m.getNombre() + " se conecto (" + contarRegistrados() + "/" + numJugadores + "), opciones: "
+                + opciones[0] + " / " + opciones[1]);
+        avisarEspera();
+    }
 
-        if (contarRegistrados() == numJugadores) {
+    /** ELEGIR|HABILIDAD: el jugador solo puede elegir una de las 2 que se le ofrecieron. */
+    private void elegirHabilidad(ManejadorCliente m, String texto) {
+        if (m.getNombre() == null || partidaIniciada || m.isHabilidadElegida()) {
+            return;
+        }
+        TipoHabilidad elegida = null;
+        for (TipoHabilidad t : m.getOpciones()) {
+            if (t.name().equals(texto)) {
+                elegida = t;
+            }
+        }
+        if (elegida == null) {
+            m.enviar(error("Esa habilidad no es una de tus dos opciones."));
+            return;
+        }
+        m.setHabilidad(elegida);
+        m.setHabilidadElegida(true);
+        log(m.getNombre() + " eligio " + elegida);
+
+        // La partida empieza cuando estan todos y todos eligieron
+        if (contarRegistrados() == numJugadores && contarListos() == numJugadores) {
             iniciarPartida();
         } else {
             avisarEspera();
@@ -161,22 +208,21 @@ public class ServidorNine {
         return n;
     }
 
-    private void avisarEspera() {
-        difundir(Protocolo.armar(Protocolo.ESPERANDO,
-                "Esperando jugadores... (" + contarRegistrados() + "/" + numJugadores + ")"));
+    private int contarListos() {
+        int n = 0;
+        for (ManejadorCliente m : clientes) {
+            if (m.getNombre() != null && m.isHabilidadElegida()) {
+                n++;
+            }
+        }
+        return n;
     }
 
-    /** Solo se ofrecen las habilidades que el juego realmente implementa. */
-    private TipoHabilidad parseHabilidad(String texto) {
-        try {
-            TipoHabilidad t = TipoHabilidad.valueOf(texto);
-            if (t != TipoHabilidad.DESCARTE_DOBLE) {
-                return t;
-            }
-        } catch (IllegalArgumentException e) {
-            // cae al valor por defecto
-        }
-        return TipoHabilidad.PROTECCION;
+    private void avisarEspera() {
+        String texto = contarRegistrados() < numJugadores
+                ? "Esperando jugadores... (" + contarRegistrados() + "/" + numJugadores + ")"
+                : "Esperando que todos elijan su habilidad... (" + contarListos() + "/" + numJugadores + ")";
+        difundir(Protocolo.armar(Protocolo.ESPERANDO, texto));
     }
 
     private void iniciarPartida() {
@@ -196,6 +242,48 @@ public class ServidorNine {
         difundir(Protocolo.armar(Protocolo.MENSAJE,
                 "¡Comienza la partida! Empieza " + juego.getJugadorActual().getNombre()));
         enviarEstadoATodos();
+        programarTemporizador();
+    }
+
+    // ------------------------------------------------------------------ temporizador de turno
+
+    /** Empieza a contar los segundos para que el jugador actual actue (reinicia el conteo anterior). */
+    private void programarTemporizador() {
+        if (tareaTurno != null) {
+            tareaTurno.cancel(false);
+        }
+        final int token = ++contadorTurno;
+        try {
+            tareaTurno = reloj.schedule(() -> tiempoAgotado(token), segundosTurno, TimeUnit.SECONDS);
+        } catch (RuntimeException e) {
+            // el servidor ya se detuvo
+        }
+    }
+
+    private void cancelarTemporizador() {
+        contadorTurno++;
+        if (tareaTurno != null) {
+            tareaTurno.cancel(false);
+        }
+    }
+
+    /** Se acabo el tiempo: si el jugador no hizo nada desde que empezo el conteo, pierde el turno. */
+    private void tiempoAgotado(int token) {
+        synchronized (lock) {
+            if (token != contadorTurno || !partidaIniciada || partidaTerminada) {
+                return;     // el jugador actuo a tiempo, o la partida ya termino
+            }
+            try {
+                Jugador j = juego.getJugadorActual();
+                log(j.getNombre() + " no jugo en " + segundosTurno + " s: se pasa el turno");
+                difundir(Protocolo.armar(Protocolo.MENSAJE, j.getNombre() + " no jugó en "
+                        + segundosTurno + " segundos: se pasa su turno."));
+                juego.terminarTurno();
+                terminarJugada(j);      // envia el estado nuevo y vuelve a programar el reloj
+            } catch (RuntimeException e) {
+                log("Error en el temporizador: " + e);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ mensajes de los clientes
@@ -207,7 +295,11 @@ public class ServidorNine {
                 String[] p = Protocolo.partir(linea);
 
                 if (Protocolo.HOLA.equals(p[0])) {
-                    registrar(m, Protocolo.arg(p, 1), Protocolo.arg(p, 2));
+                    registrar(m, Protocolo.arg(p, 1));
+                    return;
+                }
+                if (Protocolo.ELEGIR.equals(p[0])) {
+                    elegirHabilidad(m, Protocolo.arg(p, 1));
                     return;
                 }
                 if (!partidaIniciada || partidaTerminada) {
@@ -247,7 +339,7 @@ public class ServidorNine {
         }
 
         Color elegido = Color.ROJO;
-        if (carta.getColor() == Color.ESPECIAL) {
+        if (carta.cambiaColor()) {
             elegido = parseColor(Protocolo.arg(p, 2));
             if (elegido == null) {
                 m.enviar(error("Debes elegir un color válido."));
@@ -269,8 +361,11 @@ public class ServidorNine {
         }
 
         String texto = yo.getNombre() + " jugó " + carta;
-        if (carta.getColor() == Color.ESPECIAL) {
+        if (carta.cambiaColor()) {
             texto += " y eligió " + elegido;
+        }
+        if (juego.getJugadorActual() == yo && !yo.getMano().isEmpty()) {
+            texto += " (el rival pierde el turno y juega de nuevo)";
         }
         difundir(Protocolo.armar(Protocolo.MENSAJE, texto));
         if (secreto != null) {
@@ -280,8 +375,8 @@ public class ServidorNine {
     }
 
     private void accionRobar(Jugador yo) {
-        juego.robarCarta(yo);
-        difundir(Protocolo.armar(Protocolo.MENSAJE, yo.getNombre() + " robó una carta."));
+        juego.robarCarta(yo);          // roba y sigue jugando: el turno no cambia
+        difundir(Protocolo.armar(Protocolo.MENSAJE, yo.getNombre() + " robó una carta y sigue jugando."));
         terminarJugada(yo);
     }
 
@@ -319,7 +414,7 @@ public class ServidorNine {
                 yo.getNombre() + " jugó [MENOS_DOS] y descartó 2 cartas."));
 
         if (!yo.getMano().isEmpty()) {
-            juego.avanzarTurno();
+            juego.terminarTurno();
         }
         terminarJugada(yo);
     }
@@ -412,10 +507,38 @@ public class ServidorNine {
             partidaTerminada = true;
             log(ganador.getNombre() + " gano la partida");
             difundir(Protocolo.armar(Protocolo.FIN, ganador.getNombre(), ""));
+            guardarResultadoEnBD(ganador);
+            cancelarTemporizador();
             for (ManejadorCliente m : clientes) {
                 m.cerrarSuave();
             }
+        } else {
+            programarTemporizador();    // el jugador (o el siguiente) tiene otros 40 s para actuar
         }
+    }
+
+    /**
+     * Guarda en la base de datos quien gano y quienes perdieron. Se hace en otro hilo para no
+     * frenar el juego (el servidor esta dentro de synchronized(lock)) y si la base falla,
+     * GestorBD solo imprime el error: la partida no se ve afectada.
+     * La base de datos se usa en la computadora que hace de SERVIDOR.
+     */
+    private void guardarResultadoEnBD(Jugador ganador) {
+        final String nombreGanador = ganador.getNombre();
+        final List<String> perdedores = new ArrayList<>();
+        for (Jugador j : juego.getJugadores()) {
+            if (j != ganador) {
+                perdedores.add(j.getNombre());
+            }
+        }
+        Thread hilo = new Thread(() -> {
+            GestorBD.registrarVictoria(nombreGanador);
+            for (String perdedor : perdedores) {
+                GestorBD.registrarDerrota(perdedor);
+            }
+        }, "Nine-BaseDatos");
+        hilo.setDaemon(true);
+        hilo.start();
     }
 
     private void enviarEstadoATodos() {
@@ -457,7 +580,8 @@ public class ServidorNine {
                 Protocolo.cartaATexto(juego.getCartaMesa()),
                 jugadores.toString(),
                 mano.toString(),
-                hab);
+                hab,
+                String.valueOf(segundosTurno));
     }
 
     private void difundir(String mensaje) {
@@ -480,6 +604,7 @@ public class ServidorNine {
                 avisarEspera();
             } else if (!partidaTerminada) {
                 partidaTerminada = true;
+                cancelarTemporizador();
                 String quien = m.getNombre() == null ? "Un jugador" : m.getNombre();
                 log(quien + " se desconecto: fin de la partida");
                 difundir(Protocolo.armar(Protocolo.FIN, "-", quien + " se desconectó. La partida terminó."));

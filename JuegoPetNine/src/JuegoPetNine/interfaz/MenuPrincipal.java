@@ -1,17 +1,13 @@
 package JuegoPetNine.interfaz;
 
-import java.awt.Component;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.io.IOException;
 import java.util.List;
 import javax.swing.BorderFactory;
-import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
@@ -21,15 +17,9 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import JuegoPetNine.red.Protocolo;
 import JuegoPetNine.red.ServidorNine;
-import JuegoPetNine.modelo.TipoHabilidad;
 
 /** Pantalla de inicio: jugar en esta computadora, crear una partida en red o unirse a una. */
 public class MenuPrincipal extends JFrame {
-
-    /** Habilidades que el juego realmente implementa (DESCARTE_DOBLE todavia no hace nada). */
-    private static final TipoHabilidad[] HABILIDADES = {
-        TipoHabilidad.PROTECCION, TipoHabilidad.ESPEJO, TipoHabilidad.DUPEO, TipoHabilidad.INTERCAMBIO
-    };
 
     public MenuPrincipal() {
         setTitle("Nine!");
@@ -69,15 +59,12 @@ public class MenuPrincipal extends JFrame {
 
     private void crearPartida() {
         JTextField txtNombre = new JTextField("Jugador 1");
-        JComboBox<TipoHabilidad> cmbHabilidad = crearComboHabilidades();
         JSpinner spnJugadores = new JSpinner(new SpinnerNumberModel(2, 2, 4, 1));
         JTextField txtPuerto = new JTextField(String.valueOf(Protocolo.PUERTO_DEFECTO));
 
         JPanel panel = new JPanel(new GridLayout(0, 2, 8, 8));
         panel.add(new JLabel("Tu nombre:"));
         panel.add(txtNombre);
-        panel.add(new JLabel("Tu habilidad:"));
-        panel.add(cmbHabilidad);
         panel.add(new JLabel("Cantidad de jugadores:"));
         panel.add(spnJugadores);
         panel.add(new JLabel("Puerto:"));
@@ -109,8 +96,7 @@ public class MenuPrincipal extends JFrame {
                 + " (puerto " + puerto + ").";
 
         // El anfitrion tambien juega: se conecta a su propio servidor
-        conectarYMostrar("127.0.0.1", puerto, txtNombre.getText(),
-                (TipoHabilidad) cmbHabilidad.getSelectedItem(), info);
+        conectarYMostrar("127.0.0.1", puerto, txtNombre.getText(), info);
     }
 
     // ------------------------------------------------------------------ cliente
@@ -119,7 +105,6 @@ public class MenuPrincipal extends JFrame {
         JTextField txtNombre = new JTextField("Jugador 2");
         JTextField txtIp = new JTextField("192.168.");
         JTextField txtPuerto = new JTextField(String.valueOf(Protocolo.PUERTO_DEFECTO));
-        JComboBox<TipoHabilidad> cmbHabilidad = crearComboHabilidades();
 
         JPanel panel = new JPanel(new GridLayout(0, 2, 8, 8));
         panel.add(new JLabel("Tu nombre:"));
@@ -128,8 +113,6 @@ public class MenuPrincipal extends JFrame {
         panel.add(txtIp);
         panel.add(new JLabel("Puerto:"));
         panel.add(txtPuerto);
-        panel.add(new JLabel("Tu habilidad:"));
-        panel.add(cmbHabilidad);
 
         int respuesta = JOptionPane.showConfirmDialog(this, panel, "Unirse a una partida",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
@@ -145,15 +128,15 @@ public class MenuPrincipal extends JFrame {
             JOptionPane.showMessageDialog(this, "Escribe la IP del servidor.", "Aviso", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        conectarYMostrar(ip, puerto, txtNombre.getText(), (TipoHabilidad) cmbHabilidad.getSelectedItem(), null);
+        conectarYMostrar(ip, puerto, txtNombre.getText(), null);
     }
 
     /** Conecta en un hilo aparte (para no congelar la pantalla) y abre la ventana de juego. */
-    private void conectarYMostrar(String host, int puerto, String nombre, TipoHabilidad habilidad, String info) {
+    private void conectarYMostrar(String host, int puerto, String nombre, String info) {
         VentanaCliente ventana = new VentanaCliente(info);
         Thread hilo = new Thread(() -> {
             try {
-                ventana.conectar(host, puerto, nombre, habilidad);
+                ventana.conectar(host, puerto, nombre);
                 SwingUtilities.invokeLater(() -> {
                     ventana.setVisible(true);
                     dispose();
@@ -173,24 +156,6 @@ public class MenuPrincipal extends JFrame {
     }
 
     // ------------------------------------------------------------------ utilidades
-
-    private JComboBox<TipoHabilidad> crearComboHabilidades() {
-        JComboBox<TipoHabilidad> combo = new JComboBox<>(HABILIDADES);
-        combo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                    boolean seleccionado, boolean foco) {
-                Component c = super.getListCellRendererComponent(list, value, index, seleccionado, foco);
-                if (value instanceof TipoHabilidad) {
-                    setText(((TipoHabilidad) value).name());
-                    setToolTipText(((TipoHabilidad) value).getDescripcion());
-                }
-                return c;
-            }
-        });
-        combo.setToolTipText("Pasa el mouse sobre cada opción para ver qué hace");
-        return combo;
-    }
 
     /** Devuelve el puerto, o -1 (tras avisar) si no es valido. */
     private int leerPuerto(String texto) {

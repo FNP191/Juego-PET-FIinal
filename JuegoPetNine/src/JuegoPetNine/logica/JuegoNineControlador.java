@@ -11,6 +11,7 @@ import JuegoPetNine.modelo.Color;
 import JuegoPetNine.modelo.Carta;
 import java.util.ArrayList;
 import java.util.List;
+import JuegoPetNine.modelo.TipoCarta;
 import JuegoPetNine.modelo.TipoHabilidad;
 
 /**
@@ -18,12 +19,15 @@ import JuegoPetNine.modelo.TipoHabilidad;
  * @author ULISES
  */
 public class JuegoNineControlador {
+    /** Tiempo que tiene un jugador para actuar; si no juega en ese tiempo, pasa el turno. */
+    public static final int SEGUNDOS_POR_TURNO = 40;
+
     private List<Jugador> jugadores;
     private Mazo mazo;
     private int turnoActual = 0;
     private int sentido = 1; 
     private Color colorMesaActual;
-    private boolean saltarTurnoExtra = false;
+    private int saltosPendientes = 0;   // jugadores que perderan el turno cuando termine el turno actual
 
     public JuegoNineControlador(List<String> nombres) {
         jugadores = new ArrayList<>();
@@ -49,40 +53,57 @@ public class JuegoNineControlador {
         colorMesaActual = inicial.getColor();
     }
 
+    /**
+     * Juega una carta. Como en el UNO original, UNA carta por turno: despues de jugarla el turno termina.
+     *  - Bloqueo y Reversa (2 jugadores): el rival pierde el turno y vuelve a jugar quien la tiro.
+     *  - +2 y +4: el rival roba pero SI juega.
+     */
     public boolean jugarCarta(Jugador jugador, Carta carta, Color nuevoColor) {
-        if (carta.esJugableSobre(mazo.getCartaMesa(), colorMesaActual)) {
-            jugador.removerCarta(carta);
-            mazo.descartar(carta);
-            
-            colorMesaActual = (carta.getColor() == Color.ESPECIAL) ? nuevoColor : carta.getColor();
-            ejecutarEfecto(carta, jugador);
-            
-            if(!saltarTurnoExtra){
-                avanzarTurno();
-            } else {
-                saltarTurnoExtra = false; // El jugador mantiene su turno por el -2
-            }
-            return true;
+        if (!carta.esJugableSobre(mazo.getCartaMesa(), colorMesaActual)) {
+            return false;
         }
-        return false;
+        jugador.removerCarta(carta);
+        mazo.descartar(carta);
+
+        if (carta.cambiaColor()) {
+            colorMesaActual = nuevoColor;            // Comodin y +4: el jugador elige
+        } else if (carta.getColor() != Color.ESPECIAL) {
+            colorMesaActual = carta.getColor();      // carta normal: el color de la carta
+        }                                            // Espiar, Cambio de Mano...: el color de la mesa no cambia
+
+        saltosPendientes += ejecutarEfecto(carta, jugador);
+        terminarTurno();
+        return true;
     }
 
-    private void ejecutarEfecto(Carta carta, Jugador actual) {
+    /** Efecto de la carta. Devuelve cuantos jugadores perderan el turno por ella (+2 y +4: el rival roba pero SI juega). */
+    private int ejecutarEfecto(Carta carta, Jugador actual) {
         switch (carta.getTipo()) {
-            case SALTO: avanzarTurno(); break;
-            case REVERSA: sentido *= -1; if(jugadores.size() == 2) avanzarTurno(); break;
-            case SUMA_DOS: atacar(getSiguienteJugador(), 2, actual); avanzarTurno(); break;
-            case SUMA_CUATRO: atacar(getSiguienteJugador(), 4, actual); avanzarTurno(); break;
-            case MENOS_DOS: saltarTurnoExtra = true; System.out.println("¡Tiras otra carta!"); break;
-            case ESPIAR_MAZO: System.out.println("--> Espiaste el mazo: La próxima carta es " + mazo.verSiguiente()); break;
+            case SALTO: return 1;
+            case REVERSA: sentido *= -1; return jugadores.size() == 2 ? 1 : 0;
+            case SUMA_DOS: atacar(getSiguienteJugador(), 2, actual); return 0;
+            case SUMA_CUATRO: atacar(getSiguienteJugador(), 4, actual); return 0;
+            case ESPIAR_MAZO: System.out.println("--> Espiaste el mazo: La próxima carta es " + mazo.verSiguiente()); return 0;
             case CAMBIO_MANO: 
                 Jugador rival = getSiguienteJugador();
                 List<Carta> temp = new ArrayList<>(actual.getMano());
                 actual.getMano().clear(); actual.getMano().addAll(rival.getMano());
                 rival.getMano().clear(); rival.getMano().addAll(temp);
                 System.out.println("¡Cambiaste tu mano con " + rival.getNombre() + "!");
-                break;
-            default: break;
+                return 0;
+            default: return 0;
+        }
+    }
+
+    /** Pasa el turno al siguiente jugador, saltando a los que hayan perdido el turno (Bloqueo y Reversa; solo con 3 o mas jugadores). */
+    public void terminarTurno() {
+        // Bloqueo/Reversa: con 2 jugadores el rival pierde el turno y vuelve a jugar quien la tiro.
+        // Con 3 o mas, los saltos nunca pueden devolverle el turno a quien acaba de jugar.
+        saltosPendientes = Math.min(saltosPendientes, jugadores.size() == 2 ? 1 : jugadores.size() - 2);
+        avanzarTurno();
+        while (saltosPendientes > 0) {
+            avanzarTurno();
+            saltosPendientes--;
         }
     }
 
@@ -101,7 +122,8 @@ public class JuegoNineControlador {
         }
     }
 
-    public void robarCarta(Jugador j) { j.agregarCarta(mazo.robar()); avanzarTurno(); }
+    /** Roba una carta. El jugador NO pierde el turno: sigue jugando (puede robar otra o tirar una carta; despues de tirar, el turno termina). */
+    public void robarCarta(Jugador j) { j.agregarCarta(mazo.robar()); }
     public void avanzarTurno() { turnoActual = (turnoActual + sentido + jugadores.size()) % jugadores.size(); }
     
     public Jugador getJugadorActual() { return jugadores.get(turnoActual); }

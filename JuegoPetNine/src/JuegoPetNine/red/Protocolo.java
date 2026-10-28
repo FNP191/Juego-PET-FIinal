@@ -11,16 +11,18 @@ import JuegoPetNine.modelo.Carta;
  * Las cartas viajan como "COLOR,TIPO,VALOR" (ej: "ROJO,NUMERO,5").
  *
  * Cliente -> Servidor
- *   HOLA|nombre|HABILIDAD
- *   JUGAR|carta|color          (color solo importa para cartas ESPECIAL; si no, "-")
+ *   HOLA|nombre
+ *   ELEGIR|HABILIDAD           (una de las 2 que ofrecio el servidor en OPCIONES)
+ *   JUGAR|carta|color          (color solo importa para Comodin y +4; si no, "-")
  *   ROBAR
  *   MENOSDOS|carta|descarte1|descarte2
  *   HABILIDAD|tipo|carta       (carta solo para DUPEO e INTERCAMBIO; si no, "-")
  *
  * Servidor -> Cliente
  *   BIENVENIDA|nombre
+ *   OPCIONES|habilidadA|habilidadB   (2 al azar; el jugador debe responder con ELEGIR)
  *   ESPERANDO|texto
- *   ESTADO|turnoDe|esMiTurno|colorMesa|cartaMesa|jugadores|mano|habilidad
+ *   ESTADO|turnoDe|esMiTurno|colorMesa|cartaMesa|jugadores|mano|habilidad|segundosPorTurno
  *   MENSAJE|texto              (para todos)
  *   PRIVADO|texto              (solo para un jugador)
  *   ERROR|texto
@@ -34,6 +36,7 @@ public final class Protocolo {
 
     // Cliente -> Servidor
     public static final String HOLA = "HOLA";
+    public static final String ELEGIR = "ELEGIR";
     public static final String JUGAR = "JUGAR";
     public static final String ROBAR = "ROBAR";
     public static final String MENOS_DOS = "MENOSDOS";
@@ -41,6 +44,7 @@ public final class Protocolo {
 
     // Servidor -> Cliente
     public static final String BIENVENIDA = "BIENVENIDA";
+    public static final String OPCIONES = "OPCIONES";
     public static final String ESPERANDO = "ESPERANDO";
     public static final String ESTADO = "ESTADO";
     public static final String MENSAJE = "MENSAJE";

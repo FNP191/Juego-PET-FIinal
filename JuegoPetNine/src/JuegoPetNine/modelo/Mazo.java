@@ -14,6 +14,9 @@ import java.util.Stack;
  * @author ULISES
  */
 public class Mazo {
+    /** Cuantas copias de Cambio de Mano hay en el mazo (las demas especiales tienen 4). */
+    private static final int COPIAS_CAMBIO_MANO = 1;
+
     private Stack<Carta> cartasRobo = new Stack<>();
     private Stack<Carta> cartasDescarte = new Stack<>();
 
@@ -43,19 +46,38 @@ public class Mazo {
             cartasRobo.push(new Carta(Color.ESPECIAL, TipoCarta.SUMA_CUATRO, -1));
             cartasRobo.push(new Carta(Color.ESPECIAL, TipoCarta.MENOS_DOS, -1));
             cartasRobo.push(new Carta(Color.ESPECIAL, TipoCarta.ESPIAR_MAZO, -1));
-            cartasRobo.push(new Carta(Color.ESPECIAL, TipoCarta.CAMBIO_MANO, -1));
             cartasRobo.push(new Carta(Color.ESPECIAL, TipoCarta.ESPIAR_BARAJA, -1));
+        }
+        // Cambio de Mano es muy valiosa: sale mucho menos que las demas (1 copia en vez de 4)
+        for (int i = 0; i < COPIAS_CAMBIO_MANO; i++) {
+            cartasRobo.push(new Carta(Color.ESPECIAL, TipoCarta.CAMBIO_MANO, -1));
         }
     }
 
     public Carta robar() {
-        if (cartasRobo.isEmpty()) reorganizarMazo();
+        asegurarCartas();
         return cartasRobo.pop();
     }
 
     public Carta verSiguiente(){ 
+        asegurarCartas();
         return cartasRobo.peek(); 
+    }
+
+    /**
+     * El mazo de robo nunca queda vacio:
+     *  1) si se acaba, se rebaraja el descarte (menos la carta de la mesa) y se vuelve a usar;
+     *  2) si ni asi hay cartas (todas estan en las manos), se agrega un mazo nuevo completo.
+     */
+    private void asegurarCartas() {
+        if (cartasRobo.isEmpty()) {
+            reorganizarMazo();
         }
+        if (cartasRobo.isEmpty()) {
+            generarCartas();
+            Collections.shuffle(cartasRobo);
+        }
+    }
 
     public void descartar(Carta c){
         cartasDescarte.push(c); 

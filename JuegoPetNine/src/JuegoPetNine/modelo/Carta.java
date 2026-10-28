@@ -35,6 +35,14 @@ public class Carta {
         return this.tipo == cartaMesa.getTipo();
     }
 
+    /**
+     * Solo el Comodin y el +4 permiten elegir el color de la mesa. Las demas cartas especiales
+     * de Nine! (Menos Dos, Espiar Mazo, Cambio de Mano, Espiar Baraja) NO lo cambian.
+     */
+    public boolean cambiaColor() {
+        return tipo == TipoCarta.COMODIN || tipo == TipoCarta.SUMA_CUATRO;
+    }
+
     public Color getColor() { return color; }
     public TipoCarta getTipo() { return tipo; }
     public int getValor() { return valor; }

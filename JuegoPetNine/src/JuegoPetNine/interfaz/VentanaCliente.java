@@ -58,6 +58,10 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
     // Componentes
     private JPanel panelSuperior;
     private JLabel lblTurno;
+    private JLabel lblTiempo;           // cuenta regresiva del turno
+    private javax.swing.Timer relojTurno;
+    private int segundosRestantes = 0;
+    private JPanel panelTurno;          // cartel grande con de quien es el turno
     private JLabel lblColorMesa;
     private JPanel panelIndicadorColor;
     private JButton btnHabilidad;
@@ -84,8 +88,8 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
     }
 
     /** Bloquea hasta conectar (llamar fuera del hilo de Swing). */
-    public void conectar(String host, int puerto, String nombre, TipoHabilidad hab) throws IOException {
-        cliente.conectar(host, puerto, nombre, hab);
+    public void conectar(String host, int puerto, String nombre) throws IOException {
+        cliente.conectar(host, puerto, nombre);
     }
 
     // ------------------------------------------------------------------ construccion de la ventana
@@ -104,8 +108,11 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         panelSuperior.setBackground(COLOR_TURNO_AJENO);
 
         lblTurno = new JLabel("Esperando jugadores...");
-        lblTurno.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        lblTurno.setFont(new Font("Segoe UI", Font.BOLD, 24));
         lblTurno.setForeground(java.awt.Color.WHITE);
+        panelTurno = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 8));
+        panelTurno.setBackground(COLOR_TURNO_AJENO);
+        panelTurno.add(lblTurno);
 
         lblColorMesa = new JLabel("Color mesa: -");
         lblColorMesa.setFont(new Font("Segoe UI", Font.BOLD, 16));
@@ -122,11 +129,29 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         btnHabilidad.setFocusPainted(false);
         btnHabilidad.addActionListener(e -> usarHabilidad());
 
-        panelSuperior.add(lblTurno);
+        lblTiempo = new JLabel("Tiempo: -");
+        lblTiempo.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        lblTiempo.setForeground(java.awt.Color.WHITE);
+
+        // Cada segundo baja la cuenta; el servidor es quien decide cuando se pasa el turno
+        relojTurno = new javax.swing.Timer(1000, e -> {
+            if (enCurso && !finalizada && segundosRestantes > 0) {
+                segundosRestantes--;
+                mostrarTiempo();
+            }
+        });
+        relojTurno.start();
+
         panelSuperior.add(lblColorMesa);
         panelSuperior.add(panelIndicadorColor);
+        panelSuperior.add(lblTiempo);
         panelSuperior.add(btnHabilidad);
-        add(panelSuperior, BorderLayout.NORTH);
+
+        // Arriba el cartel del turno y debajo la barra con color de la mesa y habilidad
+        JPanel norte = new JPanel(new BorderLayout());
+        norte.add(panelTurno, BorderLayout.NORTH);
+        norte.add(panelSuperior, BorderLayout.CENTER);
+        add(norte, BorderLayout.NORTH);
     }
 
     private void crearPanelCentral() {
@@ -241,6 +266,9 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
                     setTitle("Nine! - " + miNombre);
                     escribirLog("Conectado como " + miNombre + ".");
                     break;
+                case Protocolo.OPCIONES:
+                    elegirHabilidad(Protocolo.arg(p, 1), Protocolo.arg(p, 2));
+                    break;
                 case Protocolo.ESPERANDO:
                     escribirLog(Protocolo.arg(p, 1));
                     break;
@@ -269,6 +297,15 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         } catch (RuntimeException e) {
             escribirLog("Mensaje inválido del servidor: " + linea);
         }
+    }
+
+    /** OPCIONES|A|B: el servidor sorteo 2 habilidades; se elige una y se responde con ELEGIR. */
+    private void elegirHabilidad(String a, String b) {
+        TipoHabilidad ta = TipoHabilidad.valueOf(a);
+        TipoHabilidad tb = TipoHabilidad.valueOf(b);
+        TipoHabilidad elegida = DialogoHabilidad.elegir(this, miNombre, ta, tb);
+        escribirLog("Elegiste la habilidad " + elegida + ".");
+        cliente.enviar(Protocolo.armar(Protocolo.ELEGIR, elegida.name()));
     }
 
     /** ESTADO|turnoDe|esMiTurno|colorMesa|cartaMesa|jugadores|mano|habilidad */
@@ -306,6 +343,14 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
             nuevosUsos = Integer.parseInt(datos[1]);
         }
 
+        // Campo 8 (opcional): segundos que tiene el jugador para actuar. Cada ESTADO reinicia la cuenta.
+        String seg = Protocolo.arg(p, 8);
+        int nuevosSegundos = seg.isEmpty() ? 0 : Integer.parseInt(seg);
+
+        if (!nuevoTurno.equals(turnoNombre)) {
+            escribirLog("¡Es el turno de " + nuevoTurno + "!");
+        }
+        segundosRestantes = nuevosSegundos;
         turnoNombre = nuevoTurno;
         miTurno = nuevoMiTurno;
         colorMesa = nuevoColor;
@@ -343,9 +388,13 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         if (!enCurso) {
             lblTurno.setText(finalizada ? "Partida terminada" : "Esperando jugadores...");
         } else {
-            lblTurno.setText(miTurno ? "¡Es tu turno!" : "Turno de: " + turnoNombre);
+            lblTurno.setText("¡Es el turno de " + turnoNombre + "!" + (miTurno ? "  (eres tú)" : ""));
         }
-        panelSuperior.setBackground(jugable && miTurno ? COLOR_TURNO_PROPIO : COLOR_TURNO_AJENO);
+        java.awt.Color fondoTurno = jugable && miTurno ? COLOR_TURNO_PROPIO : COLOR_TURNO_AJENO;
+        panelSuperior.setBackground(fondoTurno);
+        panelTurno.setBackground(fondoTurno);
+
+        mostrarTiempo();
 
         lblColorMesa.setText("Color mesa: " + (colorMesa == null ? "-" : colorMesa));
         panelIndicadorColor.setBackground(colorMesa == null ? COLOR_TURNO_AJENO : colorAwt(colorMesa));
@@ -402,6 +451,12 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         }
         panelMano.revalidate();
         panelMano.repaint();
+    }
+
+    private void mostrarTiempo() {
+        boolean activo = enCurso && !finalizada;
+        lblTiempo.setText(activo ? "Tiempo: " + segundosRestantes + " s" : "Tiempo: -");
+        lblTiempo.setForeground(activo && segundosRestantes <= 15 ? new java.awt.Color(255, 45, 45) : java.awt.Color.WHITE);
     }
 
     private static java.awt.Color colorAwt(Color c) {
@@ -462,7 +517,7 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         }
 
         String color = "-";
-        if (carta.getColor() == Color.ESPECIAL) {
+        if (carta.cambiaColor()) {
             Color[] opciones = {Color.ROJO, Color.AMARILLO, Color.VERDE, Color.AZUL};
             Color elegido = (Color) JOptionPane.showInputDialog(this,
                     "Selecciona el nuevo color activo:", "Cambio de Color",

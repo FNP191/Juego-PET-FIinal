@@ -33,6 +33,7 @@ import java.awt.Cursor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import JuegoPetNine.modelo.TipoHabilidad;
 /**
  *
@@ -45,6 +46,16 @@ public class VentanaJuego extends JFrame {
     
     // Paneles e Indicadores Superior
     private JLabel lblTurno;
+    private JPanel panelTurno;          // cartel grande con de quien es el turno
+    private JLabel lblTiempo;           // cuenta regresiva del turno
+    private JLabel lblAviso;            // aviso cuando se pasa un turno por falta de tiempo
+    private javax.swing.Timer relojTurno;
+    private int segundosRestantes = JuegoNineControlador.SEGUNDOS_POR_TURNO;
+    // Un color distinto por jugador: asi se nota enseguida cuando cambia el turno
+    private static final java.awt.Color[] COLORES_TURNO = {
+        new java.awt.Color(39, 174, 96), new java.awt.Color(230, 126, 34),
+        new java.awt.Color(142, 68, 173), new java.awt.Color(41, 128, 185)
+    };
     private JPanel panelIndicadorColor;
     private JLabel lblColorMesa;
     private JButton btnHabilidad;
@@ -61,8 +72,13 @@ public class VentanaJuego extends JFrame {
     public VentanaJuego() {
         juego = new JuegoNineControlador(Arrays.asList("Jugador 1", "Jugador 2"));
         
-        juego.getJugadores().get(0).setHabilidad(new Habilidad(TipoHabilidad.PROTECCION));
-        juego.getJugadores().get(1).setHabilidad(new Habilidad(TipoHabilidad.ESPEJO));
+        // Cada jugador recibe 2 habilidades al azar y elige una (antes estaban fijas)
+        Random azar = new Random();
+        for (Jugador j : juego.getJugadores()) {
+            TipoHabilidad[] opciones = TipoHabilidad.sortearDos(azar);
+            TipoHabilidad elegida = DialogoHabilidad.elegir(null, j.getNombre(), opciones[0], opciones[1]);
+            j.setHabilidad(new Habilidad(elegida));
+        }
 
         juego.iniciar();
 
@@ -75,6 +91,36 @@ public class VentanaJuego extends JFrame {
         crearPanelInferior();
 
         refrescarPantalla();
+
+        // Cada segundo baja la cuenta regresiva del turno
+        relojTurno = new javax.swing.Timer(1000, e -> pasoDelReloj());
+        relojTurno.start();
+    }
+
+    /** Un segundo menos. Si se acaba el tiempo, el turno pasa al siguiente jugador. */
+    private void pasoDelReloj() {
+        // Si hay un cuadro abierto (elegir color, espiar...) el jugador esta actuando: el reloj se pausa
+        for (java.awt.Window w : getOwnedWindows()) {
+            if (w.isShowing()) {
+                return;
+            }
+        }
+        segundosRestantes--;
+        if (segundosRestantes <= 0) {
+            Jugador quien = juego.getJugadorActual();
+            juego.terminarTurno();
+            refrescarPantalla();            // reinicia el reloj para el siguiente jugador
+            lblAviso.setText(quien.getNombre() + " no jugó en " + JuegoNineControlador.SEGUNDOS_POR_TURNO
+                    + " segundos: se pasó su turno.");
+            lblAviso.setVisible(true);
+        } else {
+            mostrarTiempo();
+        }
+    }
+
+    private void mostrarTiempo() {
+        lblTiempo.setText("Tiempo: " + segundosRestantes + " s");
+        lblTiempo.setForeground(segundosRestantes <= 15 ? new java.awt.Color(255, 45, 45) : java.awt.Color.WHITE);
     }
 
     private void configurarVentana() {
@@ -90,9 +136,11 @@ public class VentanaJuego extends JFrame {
         JPanel panelSuperior = new JPanel(new FlowLayout(FlowLayout.CENTER, 25, 10));
         panelSuperior.setBackground(new java.awt.Color(52, 73, 94));
 
-        lblTurno = new JLabel("Turno de: ");
-        lblTurno.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        lblTurno = new JLabel("¡Es el turno de ...!");
+        lblTurno.setFont(new Font("Segoe UI", Font.BOLD, 24));
         lblTurno.setForeground(java.awt.Color.WHITE);
+        panelTurno = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 8));
+        panelTurno.add(lblTurno);
 
         lblColorMesa = new JLabel("Color mesa: ");
         lblColorMesa.setFont(new Font("Segoe UI", Font.BOLD, 16));
@@ -109,12 +157,28 @@ public class VentanaJuego extends JFrame {
         btnHabilidad.setFocusPainted(false);
         btnHabilidad.addActionListener(e -> ejecutarHabilidadActiva());
 
-        panelSuperior.add(lblTurno);
+        lblTiempo = new JLabel("Tiempo: " + segundosRestantes + " s");
+        lblTiempo.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        lblTiempo.setForeground(java.awt.Color.WHITE);
+
+        lblAviso = new JLabel(" ", SwingConstants.CENTER);
+        lblAviso.setOpaque(true);
+        lblAviso.setBackground(new java.awt.Color(253, 237, 236));
+        lblAviso.setForeground(new java.awt.Color(176, 38, 30));
+        lblAviso.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblAviso.setVisible(false);
+
         panelSuperior.add(lblColorMesa);
         panelSuperior.add(panelIndicadorColor);
+        panelSuperior.add(lblTiempo);
         panelSuperior.add(btnHabilidad);
 
-        add(panelSuperior, BorderLayout.NORTH);
+        // Arriba el cartel del turno y debajo la barra con color de la mesa y habilidad
+        JPanel norte = new JPanel(new BorderLayout());
+        norte.add(panelTurno, BorderLayout.NORTH);
+        norte.add(panelSuperior, BorderLayout.CENTER);
+        norte.add(lblAviso, BorderLayout.SOUTH);
+        add(norte, BorderLayout.NORTH);
     }
 
     private void crearPanelCentral() {
@@ -206,7 +270,14 @@ public class VentanaJuego extends JFrame {
     public void refrescarPantalla() {
         Jugador actual = juego.getJugadorActual();
 
-        lblTurno.setText("Turno de: " + actual.getNombre());
+        // Cada jugada o accion vuelve a dar el tiempo completo
+        segundosRestantes = JuegoNineControlador.SEGUNDOS_POR_TURNO;
+        mostrarTiempo();
+        lblAviso.setVisible(false);
+
+        lblTurno.setText("¡Es el turno de " + actual.getNombre() + "!");
+        int indice = juego.getJugadores().indexOf(actual);
+        panelTurno.setBackground(COLORES_TURNO[indice % COLORES_TURNO.length]);
         lblColorMesa.setText("Color mesa: " + juego.getColorMesa());
 
         switch (juego.getColorMesa()) {
@@ -288,13 +359,16 @@ public class VentanaJuego extends JFrame {
         }
 
         Color colorElegido = Color.ROJO;
-        if (carta.getColor() == Color.ESPECIAL) {
+        if (carta.cambiaColor()) {
             Color[] opciones = {Color.ROJO, Color.AMARILLO, Color.VERDE, Color.AZUL};
             Color seleccion = (Color) JOptionPane.showInputDialog(
                 this, "Selecciona el nuevo color activo:", "Cambio de Color",
                 JOptionPane.QUESTION_MESSAGE, null, opciones, Color.ROJO
             );
-            if (seleccion != null) colorElegido = seleccion;
+            if (seleccion == null) {
+                return;                 // canceló: no se juega la carta
+            }
+            colorElegido = seleccion;
         }
 
         boolean jugadaExitosa = juego.jugarCarta(actual, carta, colorElegido);
@@ -316,20 +390,31 @@ public class VentanaJuego extends JFrame {
         }
 
         JOptionPane.showMessageDialog(this, "Elige 2 cartas de tu mano para descartarlas.", "Efecto Menos Dos", JOptionPane.INFORMATION_MESSAGE);
-        
+
+        // Se elige todo ANTES de tocar la mano: si el jugador cancela, la jugada no ocurre
+        java.util.List<Carta> restantes = new java.util.ArrayList<>(actual.getMano());
+        restantes.remove(cartaMenosDos);
+
+        Object[] opcionesMano = restantes.toArray();
+        Carta c1 = (Carta) JOptionPane.showInputDialog(this, "Selecciona la primera carta a descartar:", "Menos Dos (1/2)", JOptionPane.QUESTION_MESSAGE, null, opcionesMano, opcionesMano[0]);
+        if (c1 == null) {
+            return;
+        }
+        restantes.remove(c1);
+
+        opcionesMano = restantes.toArray();
+        Carta c2 = (Carta) JOptionPane.showInputDialog(this, "Selecciona la segunda carta a descartar:", "Menos Dos (2/2)", JOptionPane.QUESTION_MESSAGE, null, opcionesMano, opcionesMano[0]);
+        if (c2 == null) {
+            return;
+        }
+
         actual.removerCarta(cartaMenosDos);
         juego.descartarEnMesa(cartaMenosDos);
-
-        Object[] opcionesMano = actual.getMano().toArray();
-        Carta c1 = (Carta) JOptionPane.showInputDialog(this, "Selecciona la primera carta a descartar:", "Menos Dos (1/2)", JOptionPane.QUESTION_MESSAGE, null, opcionesMano, opcionesMano[0]);
-        if (c1 != null) actual.removerCarta(c1);
-
-        opcionesMano = actual.getMano().toArray();
-        Carta c2 = (Carta) JOptionPane.showInputDialog(this, "Selecciona la segunda carta a descartar:", "Menos Dos (2/2)", JOptionPane.QUESTION_MESSAGE, null, opcionesMano, opcionesMano[0]);
-        if (c2 != null) actual.removerCarta(c2);
+        actual.removerCarta(c1);
+        actual.removerCarta(c2);
 
         verificarVictoria(actual);
-        juego.avanzarTurno();
+        juego.terminarTurno();
         refrescarPantalla();
     }
 
@@ -354,25 +439,22 @@ public class VentanaJuego extends JFrame {
 
             case INTERCAMBIO:
                 Jugador rival = juego.getSiguienteJugador();
-                if (!rival.getMano().isEmpty() && !actual.getMano().isEmpty() && hab.usar()) {
+                if (rival.getMano().isEmpty() || actual.getMano().isEmpty()) {
+                    break;
+                }
+                Object[] misCartas = actual.getMano().toArray();
+                Carta entregada = (Carta) JOptionPane.showInputDialog(this, "Selecciona la carta que le entregarás a " + rival.getNombre() + ":", "Habilidad Intercambio", JOptionPane.QUESTION_MESSAGE, null, misCartas, misCartas[0]);
+                if (entregada != null && hab.usar()) {
                     Carta robada = rival.getMano().remove((int) (Math.random() * rival.getMano().size()));
+                    actual.removerCarta(entregada);
                     actual.agregarCarta(robada);
-
-                    Object[] misCartas = actual.getMano().toArray();
-                    Carta entregada = (Carta) JOptionPane.showInputDialog(this, "Selecciona la carta que le entregarás a " + rival.getNombre() + ":", "Habilidad Intercambio", JOptionPane.QUESTION_MESSAGE, null, misCartas, misCartas[0]);
-                    if (entregada != null) {
-                        actual.removerCarta(entregada);
-                        rival.agregarCarta(entregada);
-                    }
-                    JOptionPane.showMessageDialog(this, "¡Intercambio realizado con éxito!");
+                    rival.agregarCarta(entregada);
+                    JOptionPane.showMessageDialog(this, "Robaste " + robada + " y entregaste " + entregada + ".");
                 }
                 break;
 
             case PROTECCION:
-                if (hab.usar()) {
-                    actual.setProtegido(true);
-                    JOptionPane.showMessageDialog(this, "Te has protegido ante el próximo ataque de robo.");
-                }
+                JOptionPane.showMessageDialog(this, "Protección se activa sola ante el próximo +2 o +4 que te lancen.");
                 break;
 
             case ESPEJO:
@@ -389,17 +471,50 @@ public class VentanaJuego extends JFrame {
         refrescarPantalla();
     }
 
-    private void verificarVictoria(Jugador j) {
-        if (j.getMano().isEmpty()) {
+    /**
+     * Gana quien se quede sin cartas. Se revisa a TODOS los jugadores, no solo al que jugó: con
+     * Cambio de Mano, si el jugador tiraba su ultima carta, el rival recibe la mano vacia y gana el rival.
+     */
+    private void verificarVictoria(Jugador jugo) {
+        Jugador j = null;
+        if (jugo.getMano().isEmpty()) {
+            j = jugo;
+        } else {
+            for (Jugador otro : juego.getJugadores()) {
+                if (otro.getMano().isEmpty()) {
+                    j = otro;
+                    break;
+                }
+            }
+        }
+        if (j != null) {
 
-            Jugador perdedor = juego.getSiguienteJugador();
-            GestorBD.registrarVictoria(j.getNombre());
-            GestorBD.registrarDerrota(perdedor.getNombre());
+            final String ganador = j.getNombre();
+            final java.util.List<String> perdedores = new java.util.ArrayList<>();
+            for (Jugador otro : juego.getJugadores()) {
+                if (otro != j) {
+                    perdedores.add(otro.getNombre());
+                }
+            }
+            // La base de datos en otro hilo: si esta apagada no congela la ventana
+            Thread bd = new Thread(() -> {
+                GestorBD.registrarVictoria(ganador);
+                for (String p : perdedores) {
+                    GestorBD.registrarDerrota(p);
+                }
+            }, "Nine-BaseDatos");
+            bd.setDaemon(true);
+            bd.start();
 
             JOptionPane.showMessageDialog(this,
                 "¡FELICITACIONES! " + j.getNombre().toUpperCase() + " HA GANADO NINE!",
                 "Fin de Partida", JOptionPane.INFORMATION_MESSAGE);
 
+            try {
+                bd.join(3000);          // dar tiempo a que se guarde antes de cerrar
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             System.exit(0);
         }
     }

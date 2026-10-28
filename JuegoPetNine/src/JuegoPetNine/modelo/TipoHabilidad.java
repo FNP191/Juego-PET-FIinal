@@ -4,6 +4,11 @@
  */
 package JuegoPetNine.modelo;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+
 /**
  *
  * @author ULISES
@@ -22,6 +27,24 @@ public enum TipoHabilidad {
     }
     public String getDescripcion(){ 
         return descripcion; 
+    }
+
+    /** Habilidades que el juego realmente implementa (DESCARTE_DOBLE todavia no hace nada). */
+    public static List<TipoHabilidad> disponibles() {
+        List<TipoHabilidad> lista = new ArrayList<>();
+        for (TipoHabilidad t : values()) {
+            if (t != DESCARTE_DOBLE) {
+                lista.add(t);
+            }
+        }
+        return lista;
+    }
+
+    /** Sortea 2 habilidades distintas entre las disponibles: el jugador elige una de las dos. */
+    public static TipoHabilidad[] sortearDos(Random azar) {
+        List<TipoHabilidad> lista = disponibles();
+        Collections.shuffle(lista, azar);
+        return new TipoHabilidad[]{lista.get(0), lista.get(1)};
     }
         
 }

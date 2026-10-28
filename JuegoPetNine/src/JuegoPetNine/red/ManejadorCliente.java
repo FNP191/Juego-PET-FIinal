@@ -32,6 +32,8 @@ public class ManejadorCliente implements Runnable {
     private String nombre;
     private TipoHabilidad habilidad = TipoHabilidad.PROTECCION;
     private Jugador jugador;
+    private TipoHabilidad[] opciones;          // las 2 habilidades sorteadas para este jugador
+    private boolean habilidadElegida = false;
 
     public ManejadorCliente(ServidorNine servidor, Socket socket) {
         this.servidor = servidor;
@@ -106,6 +108,10 @@ public class ManejadorCliente implements Runnable {
     public void setNombre(String nombre) { this.nombre = nombre; }
     public TipoHabilidad getHabilidad() { return habilidad; }
     public void setHabilidad(TipoHabilidad habilidad) { this.habilidad = habilidad; }
+    public TipoHabilidad[] getOpciones() { return opciones; }
+    public void setOpciones(TipoHabilidad[] opciones) { this.opciones = opciones; }
+    public boolean isHabilidadElegida() { return habilidadElegida; }
+    public void setHabilidadElegida(boolean elegida) { this.habilidadElegida = elegida; }
     public Jugador getJugador() { return jugador; }
     public void setJugador(Jugador jugador) { this.jugador = jugador; }
 }
