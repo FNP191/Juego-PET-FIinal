@@ -79,6 +79,12 @@ public class Mazo {
         }
     }
 
+    /** Devuelve cartas al mazo de robo (por ejemplo, la mano de un jugador que se rinde) y lo mezcla. */
+    public void devolver(java.util.List<Carta> cartas) {
+        cartasRobo.addAll(cartas);
+        Collections.shuffle(cartasRobo);
+    }
+
     public void descartar(Carta c){
         cartasDescarte.push(c); 
     }

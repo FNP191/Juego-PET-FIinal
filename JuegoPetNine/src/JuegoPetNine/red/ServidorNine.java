@@ -59,6 +59,7 @@ public class ServidorNine {
     private ScheduledFuture<?> tareaTurno;
     private int contadorTurno = 0;      // cada vez que se reinicia el reloj sube: una tarea vieja se ignora
     private int segundosTurno = JuegoNineControlador.SEGUNDOS_POR_TURNO;
+    private final List<String> rendidos = new ArrayList<>();   // jugadores que se rindieron (cuentan como derrota)
 
     public ServidorNine(int puerto, int numJugadores) {
         this.puerto = puerto;
@@ -306,6 +307,10 @@ public class ServidorNine {
                     m.enviar(error("La partida no está en curso."));
                     return;
                 }
+                if (Protocolo.RENDIRSE.equals(p[0])) {
+                    accionRendirse(m);      // se puede en cualquier momento, no solo en tu turno
+                    return;
+                }
                 Jugador yo = m.getJugador();
                 if (yo == null || juego.getJugadorActual() != yo) {
                     m.enviar(error("No es tu turno."));
@@ -314,7 +319,7 @@ public class ServidorNine {
 
                 switch (p[0]) {
                     case Protocolo.JUGAR:     accionJugar(m, yo, p); break;
-                    case Protocolo.ROBAR:     accionRobar(yo); break;
+                    case Protocolo.ROBAR:     accionRobar(m, yo); break;
                     case Protocolo.MENOS_DOS: accionMenosDos(m, yo, p); break;
                     case Protocolo.HABILIDAD: accionHabilidad(m, yo, p); break;
                     default: m.enviar(error("Comando desconocido."));
@@ -374,10 +379,46 @@ public class ServidorNine {
         terminarJugada(yo);
     }
 
-    private void accionRobar(Jugador yo) {
-        juego.robarCarta(yo);          // roba y sigue jugando: el turno no cambia
-        difundir(Protocolo.armar(Protocolo.MENSAJE, yo.getNombre() + " robó una carta y sigue jugando."));
+    /** Robar: solo si no tienes cartas jugables, de a una y hasta MAX_ROBOS por turno. */
+    private void accionRobar(ManejadorCliente m, Jugador yo) {
+        JuegoNineControlador.Robo r = juego.robarCarta(yo);
+        String n = yo.getNombre();
+        switch (r) {
+            case TIENE_JUGABLE:
+                m.enviar(error("Tienes una carta que puedes jugar: no puedes robar."));
+                return;
+            case JUGABLE:
+                difundir(Protocolo.armar(Protocolo.MENSAJE, n + " robó una carta y puede jugarla."));
+                break;
+            case SIGUE:
+                difundir(Protocolo.armar(Protocolo.MENSAJE, n + " robó una carta que no le sirve; puede robar otra."));
+                break;
+            default:
+                difundir(Protocolo.armar(Protocolo.MENSAJE, n + " robó " + JuegoNineControlador.MAX_ROBOS
+                        + " cartas sin poder jugar: pierde el turno."));
+        }
         terminarJugada(yo);
+    }
+
+    /** Rendirse: el jugador sale de la partida (sus cartas vuelven al mazo) y sigue viendo como espectador. */
+    private void accionRendirse(ManejadorCliente m) {
+        Jugador yo = m.getJugador();
+        if (yo == null || !juego.getJugadores().contains(yo)) {
+            m.enviar(error("Ya no estás en la partida."));
+            return;
+        }
+        rendidos.add(yo.getNombre());
+        juego.rendirse(yo);
+        log(yo.getNombre() + " se rindio");
+        difundir(Protocolo.armar(Protocolo.MENSAJE, yo.getNombre() + " se rindió."));
+        m.enviar(Protocolo.armar(Protocolo.PRIVADO, "Te rendiste. Sigues viendo la partida como espectador."));
+        if (juego.hayGanadorPorAbandono()) {
+            enviarEstadoATodos();
+            terminarPartida(juego.getJugadores().get(0));
+        } else {
+            enviarEstadoATodos();
+            programarTemporizador();
+        }
     }
 
     /** Menos Dos: se juega la carta y ademas se descartan 2 cartas de la mano; luego pasa el turno. */
@@ -504,16 +545,21 @@ public class ServidorNine {
             }
         }
         if (ganador != null) {
-            partidaTerminada = true;
-            log(ganador.getNombre() + " gano la partida");
-            difundir(Protocolo.armar(Protocolo.FIN, ganador.getNombre(), ""));
-            guardarResultadoEnBD(ganador);
-            cancelarTemporizador();
-            for (ManejadorCliente m : clientes) {
-                m.cerrarSuave();
-            }
+            terminarPartida(ganador);
         } else {
-            programarTemporizador();    // el jugador (o el siguiente) tiene otros 40 s para actuar
+            programarTemporizador();    // el jugador (o el siguiente) tiene el tiempo completo para actuar
+        }
+    }
+
+    /** Fin de la partida: avisa a todos, guarda el resultado y cierra las conexiones. */
+    private void terminarPartida(Jugador ganador) {
+        partidaTerminada = true;
+        log(ganador.getNombre() + " gano la partida");
+        difundir(Protocolo.armar(Protocolo.FIN, ganador.getNombre(), ""));
+        guardarResultadoEnBD(ganador);
+        cancelarTemporizador();
+        for (ManejadorCliente c : clientes) {
+            c.cerrarSuave();
         }
     }
 
@@ -529,6 +575,11 @@ public class ServidorNine {
         for (Jugador j : juego.getJugadores()) {
             if (j != ganador) {
                 perdedores.add(j.getNombre());
+            }
+        }
+        for (String r : rendidos) {
+            if (!perdedores.contains(r) && !r.equals(nombreGanador)) {
+                perdedores.add(r);
             }
         }
         Thread hilo = new Thread(() -> {

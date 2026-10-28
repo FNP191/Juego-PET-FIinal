@@ -20,13 +20,24 @@ import JuegoPetNine.modelo.TipoHabilidad;
  */
 public class JuegoNineControlador {
     /** Tiempo que tiene un jugador para actuar; si no juega en ese tiempo, pasa el turno. */
-    public static final int SEGUNDOS_POR_TURNO = 40;
+    public static final int SEGUNDOS_POR_TURNO = 30;
+    /** Maximo de cartas que se pueden robar en un mismo turno. */
+    public static final int MAX_ROBOS = 3;
+
+    /** Resultado de robar: lo usan la ventana local y el servidor para avisar al jugador. */
+    public enum Robo {
+        TIENE_JUGABLE,   // no se roba: ya tienes una carta que puedes jugar
+        JUGABLE,         // robo una carta que puede jugar
+        SIGUE,           // robo y no le sirve, pero todavia puede robar otra
+        PIERDE_TURNO     // llego al limite sin poder jugar: el turno pasa
+    }
 
     private List<Jugador> jugadores;
     private Mazo mazo;
     private int turnoActual = 0;
     private int sentido = 1; 
     private Color colorMesaActual;
+    private int robosEnTurno = 0;       // cartas robadas en el turno actual
     private int saltosPendientes = 0;   // jugadores que perderan el turno cuando termine el turno actual
 
     public JuegoNineControlador(List<String> nombres) {
@@ -97,6 +108,7 @@ public class JuegoNineControlador {
 
     /** Pasa el turno al siguiente jugador, saltando a los que hayan perdido el turno (Bloqueo y Reversa; solo con 3 o mas jugadores). */
     public void terminarTurno() {
+        robosEnTurno = 0;
         // Bloqueo/Reversa: con 2 jugadores el rival pierde el turno y vuelve a jugar quien la tiro.
         // Con 3 o mas, los saltos nunca pueden devolverle el turno a quien acaba de jugar.
         saltosPendientes = Math.min(saltosPendientes, jugadores.size() == 2 ? 1 : jugadores.size() - 2);
@@ -122,8 +134,71 @@ public class JuegoNineControlador {
         }
     }
 
-    /** Roba una carta. El jugador NO pierde el turno: sigue jugando (puede robar otra o tirar una carta; despues de tirar, el turno termina). */
-    public void robarCarta(Jugador j) { j.agregarCarta(mazo.robar()); }
+    /** True si el jugador tiene al menos una carta que puede tirar ahora (Menos Dos necesita 3 cartas o mas). */
+    public boolean puedeJugarAlgo(Jugador j) {
+        for (Carta c : j.getMano()) {
+            if (c.getTipo() == TipoCarta.MENOS_DOS) {
+                if (j.getMano().size() >= 3) {
+                    return true;
+                }
+            } else if (c.esJugableSobre(mazo.getCartaMesa(), colorMesaActual)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Robar del mazo. Solo se puede si NO tienes ninguna carta jugable. Se roba de a una: si la carta
+     * sirve, el jugador puede tirarla; si no, puede robar otra, hasta MAX_ROBOS por turno. Si llega al
+     * limite sin poder jugar, pierde el turno.
+     */
+    public Robo robarCarta(Jugador j) {
+        if (puedeJugarAlgo(j)) {
+            return Robo.TIENE_JUGABLE;
+        }
+        j.agregarCarta(mazo.robar());
+        robosEnTurno++;
+        if (puedeJugarAlgo(j)) {
+            return Robo.JUGABLE;
+        }
+        if (robosEnTurno >= MAX_ROBOS) {
+            terminarTurno();
+            return Robo.PIERDE_TURNO;
+        }
+        return Robo.SIGUE;
+    }
+
+    public int getRobosEnTurno() { return robosEnTurno; }
+
+    /**
+     * El jugador se rinde: sale de la partida y sus cartas vuelven al mazo. Si era su turno, pasa al
+     * siguiente. Con un solo jugador restante la partida termina (ver hayGanadorPorAbandono).
+     */
+    public void rendirse(Jugador j) {
+        int idx = jugadores.indexOf(j);
+        if (idx < 0) {
+            return;
+        }
+        boolean eraSuTurno = (idx == turnoActual);
+        mazo.devolver(new ArrayList<>(j.getMano()));
+        j.getMano().clear();
+        jugadores.remove(idx);
+        saltosPendientes = 0;
+        robosEnTurno = 0;
+        if (jugadores.isEmpty()) {
+            return;
+        }
+        if (eraSuTurno) {
+            turnoActual = sentido == 1 ? idx % jugadores.size()
+                                       : (idx - 1 + jugadores.size()) % jugadores.size();
+        } else if (idx < turnoActual) {
+            turnoActual--;
+        }
+    }
+
+    /** True si solo queda un jugador en la partida (los demas se rindieron). */
+    public boolean hayGanadorPorAbandono() { return jugadores.size() == 1; }
     public void avanzarTurno() { turnoActual = (turnoActual + sentido + jugadores.size()) % jugadores.size(); }
     
     public Jugador getJugadorActual() { return jugadores.get(turnoActual); }

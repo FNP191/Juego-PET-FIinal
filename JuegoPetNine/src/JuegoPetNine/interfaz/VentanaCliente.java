@@ -46,6 +46,7 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
     private boolean enCurso = false;
     private boolean finalizada = false;
     private boolean miTurno = false;
+    private boolean yaMeRendi = false;       // me rendi: sigo viendo la partida como espectador
     private String turnoNombre = "";
     private Color colorMesa = null;
     private Carta cartaMesa = null;
@@ -65,6 +66,8 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
     private JLabel lblColorMesa;
     private JPanel panelIndicadorColor;
     private JButton btnHabilidad;
+    private JButton btnRendirse;
+    private JPanel contenedorMano;
     private JLabel lblRivales;
     private JButton btnCartaMesa;
     private JButton btnMazo;
@@ -122,6 +125,13 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         panelIndicadorColor.setPreferredSize(new Dimension(25, 25));
         panelIndicadorColor.setBorder(BorderFactory.createLineBorder(java.awt.Color.WHITE, 1));
 
+        btnRendirse = new JButton("Rendirse");
+        btnRendirse.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btnRendirse.setBackground(new java.awt.Color(192, 57, 43));
+        btnRendirse.setForeground(java.awt.Color.WHITE);
+        btnRendirse.setFocusPainted(false);
+        btnRendirse.addActionListener(e -> rendirse());
+
         btnHabilidad = new JButton("Habilidad");
         btnHabilidad.setFont(new Font("Segoe UI", Font.BOLD, 13));
         btnHabilidad.setBackground(new java.awt.Color(155, 89, 182));
@@ -146,6 +156,7 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         panelSuperior.add(panelIndicadorColor);
         panelSuperior.add(lblTiempo);
         panelSuperior.add(btnHabilidad);
+        panelSuperior.add(btnRendirse);
 
         // Arriba el cartel del turno y debajo la barra con color de la mesa y habilidad
         JPanel norte = new JPanel(new BorderLayout());
@@ -221,6 +232,7 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         JPanel contenedor = new JPanel(new BorderLayout());
         contenedor.setBorder(BorderFactory.createTitledBorder("Tu mano de cartas"));
         contenedor.setOpaque(false);
+        contenedorMano = contenedor;
 
         panelMano = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 12));
         panelMano.setBackground(new java.awt.Color(220, 224, 230));
@@ -451,6 +463,12 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         }
         panelMano.revalidate();
         panelMano.repaint();
+
+        // Titulo de la mano, abajo a la izquierda: cuantas cartas tienes
+        contenedorMano.setBorder(BorderFactory.createTitledBorder(
+                "Tu mano de cartas — " + mano.size() + (mano.size() == 1 ? " carta" : " cartas")));
+        contenedorMano.repaint();
+        btnRendirse.setEnabled(jugable && !yaMeRendi);
     }
 
     private void mostrarTiempo() {
@@ -551,6 +569,19 @@ public class VentanaCliente extends JFrame implements ClienteNine.Escucha {
         }
         cliente.enviar(Protocolo.armar(Protocolo.MENOS_DOS,
                 Protocolo.cartaATexto(menosDos), Protocolo.cartaATexto(d1), Protocolo.cartaATexto(d2)));
+    }
+
+    private void rendirse() {
+        if (!enCurso || finalizada || yaMeRendi) {
+            return;
+        }
+        int ok = JOptionPane.showConfirmDialog(this, "¿Seguro que quieres rendirte?",
+                "Rendirse", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (ok == JOptionPane.YES_OPTION) {
+            yaMeRendi = true;
+            cliente.enviar(Protocolo.RENDIRSE);
+            refrescar();
+        }
     }
 
     private void robar() {

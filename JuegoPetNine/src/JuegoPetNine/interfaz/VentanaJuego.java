@@ -59,6 +59,8 @@ public class VentanaJuego extends JFrame {
     private JPanel panelIndicadorColor;
     private JLabel lblColorMesa;
     private JButton btnHabilidad;
+    private JButton btnRendirse;
+    private JPanel panelContenedorMano;
 
     // Zona Central (Mesa y Mazo)
     private JButton btnCartaMesa;
@@ -150,6 +152,13 @@ public class VentanaJuego extends JFrame {
         panelIndicadorColor.setPreferredSize(new Dimension(25, 25));
         panelIndicadorColor.setBorder(BorderFactory.createLineBorder(java.awt.Color.WHITE, 1));
 
+        btnRendirse = new JButton("Rendirse");
+        btnRendirse.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btnRendirse.setBackground(new java.awt.Color(192, 57, 43));
+        btnRendirse.setForeground(java.awt.Color.WHITE);
+        btnRendirse.setFocusPainted(false);
+        btnRendirse.addActionListener(e -> rendirse());
+
         btnHabilidad = new JButton("Usar Habilidad");
         btnHabilidad.setFont(new Font("Segoe UI", Font.BOLD, 13));
         btnHabilidad.setBackground(new java.awt.Color(155, 89, 182));
@@ -172,6 +181,7 @@ public class VentanaJuego extends JFrame {
         panelSuperior.add(panelIndicadorColor);
         panelSuperior.add(lblTiempo);
         panelSuperior.add(btnHabilidad);
+        panelSuperior.add(btnRendirse);
 
         // Arriba el cartel del turno y debajo la barra con color de la mesa y habilidad
         JPanel norte = new JPanel(new BorderLayout());
@@ -229,8 +239,8 @@ public class VentanaJuego extends JFrame {
     }
 
     private void crearPanelInferior() {
-        JPanel panelContenedorMano = new JPanel(new BorderLayout());
-        panelContenedorMano.setBorder(BorderFactory.createTitledBorder("Tu Mano de Cartas (9 iniciales)"));
+        panelContenedorMano = new JPanel(new BorderLayout());
+        panelContenedorMano.setBorder(BorderFactory.createTitledBorder("Tu mano de cartas"));
         panelContenedorMano.setOpaque(false);
 
         panelMano = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 12));
@@ -322,6 +332,12 @@ public class VentanaJuego extends JFrame {
 
         panelMano.revalidate();
         panelMano.repaint();
+
+        // Titulo de la mano, abajo a la izquierda: de quien es y cuantas cartas tiene
+        panelContenedorMano.setBorder(BorderFactory.createTitledBorder(
+                "Mano de " + actual.getNombre() + " — " + actual.getMano().size()
+                + (actual.getMano().size() == 1 ? " carta" : " cartas")));
+        panelContenedorMano.repaint();
     }
 
     private void manejarClickCarta(BotonCarta btnClicked) {
@@ -465,9 +481,59 @@ public class VentanaJuego extends JFrame {
         refrescarPantalla();
     }
 
+    /** Robar: solo si no tienes cartas jugables, de a una y hasta 3 por turno. */
     private void accionRobar() {
         Jugador actual = juego.getJugadorActual();
-        juego.robarCarta(actual);
+        JuegoNineControlador.Robo r = juego.robarCarta(actual);
+        refrescarPantalla();
+        String aviso;
+        switch (r) {
+            case TIENE_JUGABLE:
+                aviso = "Tienes una carta que puedes jugar: no puedes robar.";
+                break;
+            case JUGABLE:
+                aviso = actual.getNombre() + " robó una carta que puede jugar.";
+                break;
+            case SIGUE:
+                aviso = "Robaste una carta que no te sirve. Puedes robar otra (" + juego.getRobosEnTurno()
+                        + "/" + JuegoNineControlador.MAX_ROBOS + ").";
+                break;
+            default:
+                aviso = actual.getNombre() + " robó " + JuegoNineControlador.MAX_ROBOS
+                        + " cartas sin poder jugar: pierde el turno.";
+        }
+        lblAviso.setText(aviso);
+        lblAviso.setVisible(true);
+    }
+
+    /** Rendirse: el jugador actual abandona y gana el otro (la partida local es de 2). */
+    private void rendirse() {
+        Jugador quien = juego.getJugadorActual();
+        int ok = JOptionPane.showConfirmDialog(this, quien.getNombre() + ", ¿seguro que quieres rendirte?",
+                "Rendirse", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (ok != JOptionPane.YES_OPTION) {
+            return;
+        }
+        final String perdedor = quien.getNombre();
+        juego.rendirse(quien);
+        if (juego.hayGanadorPorAbandono()) {
+            Jugador ganador = juego.getJugadores().get(0);
+            final String nombreGanador = ganador.getNombre();
+            Thread bd = new Thread(() -> {
+                GestorBD.registrarVictoria(nombreGanador);
+                GestorBD.registrarDerrota(perdedor);
+            }, "Nine-BaseDatos");
+            bd.setDaemon(true);
+            bd.start();
+            JOptionPane.showMessageDialog(this, perdedor + " se rindió.\n¡" + nombreGanador.toUpperCase() + " HA GANADO NINE!",
+                    "Fin de Partida", JOptionPane.INFORMATION_MESSAGE);
+            try {
+                bd.join(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            System.exit(0);
+        }
         refrescarPantalla();
     }
 

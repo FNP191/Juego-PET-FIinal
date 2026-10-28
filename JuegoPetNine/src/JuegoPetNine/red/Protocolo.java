@@ -15,6 +15,7 @@ import JuegoPetNine.modelo.Carta;
  *   ELEGIR|HABILIDAD           (una de las 2 que ofrecio el servidor en OPCIONES)
  *   JUGAR|carta|color          (color solo importa para Comodin y +4; si no, "-")
  *   ROBAR
+ *   RENDIRSE
  *   MENOSDOS|carta|descarte1|descarte2
  *   HABILIDAD|tipo|carta       (carta solo para DUPEO e INTERCAMBIO; si no, "-")
  *
@@ -39,6 +40,7 @@ public final class Protocolo {
     public static final String ELEGIR = "ELEGIR";
     public static final String JUGAR = "JUGAR";
     public static final String ROBAR = "ROBAR";
+    public static final String RENDIRSE = "RENDIRSE";
     public static final String MENOS_DOS = "MENOSDOS";
     public static final String HABILIDAD = "HABILIDAD";
 
